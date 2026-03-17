@@ -51,7 +51,7 @@ MaVo-wp-plugins/
 
 | Directory | Description | Status |
 |-----------|-------------|--------|
-| *(none yet)* | — | — |
+| `mavo-cookie-consent` | Implicit cookie consent banner; dismissed on click or 300 px scroll, suppressed for 1 year via cookie | Active |
 
 Update this table when plugins are added.
 
