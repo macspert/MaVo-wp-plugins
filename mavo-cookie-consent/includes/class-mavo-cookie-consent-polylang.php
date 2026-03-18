@@ -10,29 +10,31 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Class Mavo_Cookie_Consent_Polylang
  *
- * Delays all third-party cookies until implied consent is given, and
- * restores the Polylang language preference client-side on consent.
+ * Delays all third-party cookies until implied consent is given, then
+ * restores them client-side after consent.
  *
  * How it works
  * ============
- * Plugins (e.g. Polylang) register cookies via setcookie() during `init`.
- * WordPress only physically sends HTTP headers once output begins, so all
- * Set-Cookie headers are still in PHP's pending queue when `send_headers`
- * fires.  We use that window to call header_remove('Set-Cookie'), which
- * drops every pending cookie in one step.
+ * Plugins register cookies via setcookie() during `init`. WordPress only
+ * physically sends HTTP headers once output begins, so all Set-Cookie headers
+ * are still in PHP's pending queue when `send_headers` fires. We use that
+ * window to snapshot the pending cookies via headers_list(), then call
+ * header_remove('Set-Cookie') to drop them all.
  *
- * On the client side, cookie-consent.js reads the pllLanguage value passed
- * through wp_localize_script and writes the pll_language cookie itself
- * immediately after the visitor triggers implied consent — so the language
- * preference is captured without needing an extra page load.
+ * The captured cookie name/value pairs are passed to cookie-consent.js via
+ * wp_localize_script. On implied consent (click / 300 px scroll), the JS
+ * re-sets each captured cookie client-side — no extra page load required.
+ *
+ * HttpOnly cookies are excluded from the snapshot because they cannot be
+ * written by JavaScript.
  *
  * Once the mavo_cookie_consent cookie is present (returning visitors), this
  * class registers no hooks and all cookies are sent normally.
  */
 class Mavo_Cookie_Consent_Polylang {
 
-	/** Name of the Polylang language-preference cookie. */
-	const PLL_COOKIE = 'pll_language';
+	/** Cookies captured from pending Set-Cookie headers before suppression. */
+	private static array $pending_cookies = [];
 
 	/** Singleton instance. */
 	private static ?self $instance = null;
@@ -59,12 +61,14 @@ class Mavo_Cookie_Consent_Polylang {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * Drops all pending Set-Cookie headers before the response is sent.
+	 * Snapshots then drops all pending Set-Cookie headers before the response
+	 * is sent.
 	 *
 	 * Runs at PHP_INT_MAX priority on `send_headers`, after every plugin has
 	 * had a chance to queue its cookies via setcookie() during `init`.
 	 */
 	public function suppress_all_cookies(): void {
+		self::$pending_cookies = self::parse_pending_cookies();
 		header_remove( 'Set-Cookie' );
 	}
 
@@ -73,26 +77,61 @@ class Mavo_Cookie_Consent_Polylang {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * Returns cookie name and current language slug for use in wp_localize_script.
+	 * Returns cookie name/value pairs captured before suppression.
+	 * Used by Mavo_Cookie_Consent::enqueue_assets() for JS localisation.
 	 *
-	 * Returns empty strings when Polylang is not active so the JS config shape
-	 * is always consistent and the JS simply no-ops on those fields.
-	 *
-	 * @return array{cookieName: string, language: string}
+	 * @return list<array{name: string, value: string}>
 	 */
-	public static function get_cookie_data(): array {
-		if ( ! function_exists( 'pll_current_language' ) ) {
-			return [
-				'cookieName' => '',
-				'language'   => '',
+	public static function get_pending_cookies(): array {
+		return self::$pending_cookies;
+	}
+
+	// -------------------------------------------------------------------------
+	// Private helpers
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Reads headers_list() and extracts Set-Cookie name/value pairs.
+	 * HttpOnly cookies are excluded — they cannot be written by JavaScript.
+	 *
+	 * @return list<array{name: string, value: string}>
+	 */
+	private static function parse_pending_cookies(): array {
+		$cookies = [];
+
+		foreach ( headers_list() as $header ) {
+			if ( 0 !== stripos( $header, 'Set-Cookie:' ) ) {
+				continue;
+			}
+
+			$cookie_string = trim( substr( $header, strlen( 'Set-Cookie:' ) ) );
+
+			// HttpOnly cookies cannot be written client-side — skip them.
+			if ( 1 === preg_match( '/;\s*HttpOnly/i', $cookie_string ) ) {
+				continue;
+			}
+
+			// Extract the name=value pair (everything before the first ';').
+			$name_value_part = explode( ';', $cookie_string, 2 )[0];
+			$eq_pos          = strpos( $name_value_part, '=' );
+
+			if ( false === $eq_pos ) {
+				continue; // Malformed — skip.
+			}
+
+			$name  = urldecode( substr( $name_value_part, 0, $eq_pos ) );
+			$value = urldecode( substr( $name_value_part, $eq_pos + 1 ) );
+
+			if ( '' === $name ) {
+				continue;
+			}
+
+			$cookies[] = [
+				'name'  => $name,
+				'value' => $value,
 			];
 		}
 
-		$lang = pll_current_language( 'slug' );
-
-		return [
-			'cookieName' => self::PLL_COOKIE,
-			'language'   => is_string( $lang ) ? $lang : '',
-		];
+		return $cookies;
 	}
 }
