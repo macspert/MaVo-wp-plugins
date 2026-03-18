@@ -2,14 +2,18 @@
 ( function () {
 	'use strict';
 
-	var config  = mavoCookieConsent;
-	var banner  = document.getElementById( 'mavo-cookie-banner' );
+	var config   = mavoCookieConsent;
+	var banner   = document.getElementById( 'mavo-cookie-banner' );
 	var dismissed = false;
 
 	// Nothing to do if the banner was not rendered (PHP already saw the cookie).
 	if ( ! banner ) {
 		return;
 	}
+
+	// -------------------------------------------------------------------------
+	// Cookie helper
+	// -------------------------------------------------------------------------
 
 	/**
 	 * Writes a cookie with a 1-year expiry on the root path.
@@ -26,9 +30,49 @@
 			'; path=/; SameSite=Lax';
 	}
 
+	// -------------------------------------------------------------------------
+	// Deferred tracking injection
+	// -------------------------------------------------------------------------
+
 	/**
-	 * Animates the banner out, sets the consent cookie, and removes all
-	 * event listeners so they cannot fire a second time.
+	 * Dynamically injects GA4 and Statcounter scripts into <head>.
+	 * Called once, immediately after implied consent is recorded.
+	 */
+	function loadTracking() {
+		// Google Analytics 4 ------------------------------------------------ //
+		if ( config.ga4Id ) {
+			var gtagScript = document.createElement( 'script' );
+			gtagScript.async = true;
+			gtagScript.src   = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent( config.ga4Id );
+			document.head.appendChild( gtagScript );
+
+			window.dataLayer = window.dataLayer || [];
+			function gtag() { window.dataLayer.push( arguments ); }
+			window.gtag = gtag;
+			gtag( 'js', new Date() );
+			gtag( 'config', config.ga4Id );
+		}
+
+		// Statcounter -------------------------------------------------------- //
+		if ( config.scProject && config.scSecurity ) {
+			window.sc_project   = config.scProject;
+			window.sc_invisible = 1;
+			window.sc_security  = config.scSecurity;
+
+			var scScript = document.createElement( 'script' );
+			scScript.async = true;
+			scScript.src   = 'https://www.statcounter.com/counter/counter.js';
+			document.head.appendChild( scScript );
+		}
+	}
+
+	// -------------------------------------------------------------------------
+	// Dismiss logic
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Animates the banner out, sets the consent cookie, fires deferred
+	 * trackers, and removes all event listeners.
 	 */
 	function dismiss() {
 		if ( dismissed ) {
@@ -36,18 +80,19 @@
 		}
 		dismissed = true;
 
-		banner.classList.add( 'mavo-cookie-banner--dismissing' );
-
+		// Record consent immediately so trackers can fire right away.
 		setCookie( config.cookieName, '1' );
+		loadTracking();
 
-		// Remove listeners after the transition completes.
+		// Animate banner out.
+		banner.classList.add( 'mavo-cookie-banner--dismissing' );
 		banner.addEventListener( 'transitionend', function onEnd() {
 			banner.removeEventListener( 'transitionend', onEnd );
 			banner.remove();
 		} );
 
 		document.removeEventListener( 'click',  onUserInteraction );
-		window.removeEventListener( 'scroll', onScroll );
+		window.removeEventListener(   'scroll', onScroll );
 	}
 
 	/** Dismiss on any click anywhere in the document. */
@@ -66,12 +111,16 @@
 		}
 	}
 
-	// Show the banner (remove the hidden class) once the DOM is ready.
+	// -------------------------------------------------------------------------
+	// Initialise
+	// -------------------------------------------------------------------------
+
 	function init() {
+		// Reveal the banner (triggers the CSS slide-up transition).
 		banner.classList.remove( 'mavo-cookie-banner--hidden' );
 
 		document.addEventListener( 'click',  onUserInteraction );
-		window.addEventListener( 'scroll', onScroll, { passive: true } );
+		window.addEventListener(   'scroll', onScroll, { passive: true } );
 	}
 
 	if ( document.readyState === 'loading' ) {

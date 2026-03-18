@@ -20,13 +20,15 @@ define( 'MAVO_CC_FILE',    __FILE__ );
 define( 'MAVO_CC_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'MAVO_CC_URL',     plugin_dir_url( __FILE__ ) );
 
+require_once MAVO_CC_DIR . 'includes/class-mavo-cookie-consent-settings.php';
 require_once MAVO_CC_DIR . 'includes/class-mavo-cookie-consent.php';
 
 /**
- * Returns the single plugin instance.
+ * Bootstraps the plugin (main class + admin settings).
  */
-function mavo_cookie_consent(): Mavo_Cookie_Consent {
-	return Mavo_Cookie_Consent::get_instance();
+function mavo_cookie_consent_init(): void {
+	Mavo_Cookie_Consent_Settings::get_instance();
+	Mavo_Cookie_Consent::get_instance();
 }
 
-mavo_cookie_consent();
+mavo_cookie_consent_init();
