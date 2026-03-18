@@ -91,6 +91,7 @@ class Mavo_Cookie_Consent {
 		);
 
 		$cfg = Mavo_Cookie_Consent_Settings::get_tracking_config();
+		$pll = Mavo_Cookie_Consent_Polylang::get_cookie_data();
 
 		wp_localize_script(
 			'mavo-cookie-consent',
@@ -101,6 +102,8 @@ class Mavo_Cookie_Consent {
 				'ga4Id'           => $cfg['ga4_id'],
 				'scProject'       => $cfg['sc_project'] ?: 0,
 				'scSecurity'      => $cfg['sc_security'],
+				'pllCookieName'   => $pll['cookieName'],
+				'pllLanguage'     => $pll['language'],
 			]
 		);
 	}

@@ -82,6 +82,14 @@
 
 		// Record consent immediately so trackers can fire right away.
 		setCookie( config.cookieName, '1' );
+
+		// If Polylang is active, also set its language cookie now.
+		// The server suppressed pll_language until consent; we restore it here
+		// so the language preference is captured without needing a page reload.
+		if ( config.pllCookieName && config.pllLanguage ) {
+			setCookie( config.pllCookieName, config.pllLanguage );
+		}
+
 		loadTracking();
 
 		// Animate banner out.

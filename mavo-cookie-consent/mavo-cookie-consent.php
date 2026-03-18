@@ -3,7 +3,7 @@
  * Plugin Name:       MaVo Cookie Consent
  * Plugin URI:        https://github.com/macspert/MaVo-wp-plugins
  * Description:       Displays an implicit cookie consent banner on first visit. Dismissed automatically on click or 300px scroll, then suppressed for one year.
- * Version:           1.0.0
+ * Version:           1.1.0
  * Requires at least: 6.0
  * Requires PHP:      8.0
  * Author:            MaVo
@@ -15,19 +15,21 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'MAVO_CC_VERSION', '1.0.0' );
+define( 'MAVO_CC_VERSION', '1.1.0' );
 define( 'MAVO_CC_FILE',    __FILE__ );
 define( 'MAVO_CC_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'MAVO_CC_URL',     plugin_dir_url( __FILE__ ) );
 
 require_once MAVO_CC_DIR . 'includes/class-mavo-cookie-consent-settings.php';
+require_once MAVO_CC_DIR . 'includes/class-mavo-cookie-consent-polylang.php';
 require_once MAVO_CC_DIR . 'includes/class-mavo-cookie-consent.php';
 
 /**
- * Bootstraps the plugin (main class + admin settings).
+ * Bootstraps the plugin (main class + admin settings + optional integrations).
  */
 function mavo_cookie_consent_init(): void {
 	Mavo_Cookie_Consent_Settings::get_instance();
+	Mavo_Cookie_Consent_Polylang::get_instance();
 	Mavo_Cookie_Consent::get_instance();
 }
 
