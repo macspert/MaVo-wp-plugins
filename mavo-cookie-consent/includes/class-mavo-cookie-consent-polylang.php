@@ -10,19 +10,16 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Class Mavo_Cookie_Consent_Polylang
  *
- * When Polylang is active, this class prevents the pll_language cookie from
- * being sent to the browser until the visitor has given implied consent.
+ * Delays all third-party cookies until implied consent is given, and
+ * restores the Polylang language preference client-side on consent.
  *
  * How it works
  * ============
- * Polylang registers pll_language via setcookie() during the `init` action.
- * WordPress only physically sends HTTP headers once output begins, so the
- * Set-Cookie header is still in PHP's pending-header queue when the
- * `send_headers` action fires.  We use that window to:
- *
- *   1. Collect all queued Set-Cookie headers via headers_list().
- *   2. Clear them all with header_remove('Set-Cookie').
- *   3. Re-register every one EXCEPT pll_language.
+ * Plugins (e.g. Polylang) register cookies via setcookie() during `init`.
+ * WordPress only physically sends HTTP headers once output begins, so all
+ * Set-Cookie headers are still in PHP's pending queue when `send_headers`
+ * fires.  We use that window to call header_remove('Set-Cookie'), which
+ * drops every pending cookie in one step.
  *
  * On the client side, cookie-consent.js reads the pllLanguage value passed
  * through wp_localize_script and writes the pll_language cookie itself
@@ -30,7 +27,7 @@ defined( 'ABSPATH' ) || exit;
  * preference is captured without needing an extra page load.
  *
  * Once the mavo_cookie_consent cookie is present (returning visitors), this
- * class registers no hooks and Polylang operates completely normally.
+ * class registers no hooks and all cookies are sent normally.
  */
 class Mavo_Cookie_Consent_Polylang {
 
@@ -48,17 +45,13 @@ class Mavo_Cookie_Consent_Polylang {
 	}
 
 	private function __construct() {
-		if ( ! $this->is_polylang_active() ) {
-			return;
-		}
-
 		if ( isset( $_COOKIE[ Mavo_Cookie_Consent::COOKIE_NAME ] ) ) {
-			// Consent already given — let Polylang run normally.
+			// Consent already given — send cookies normally.
 			return;
 		}
 
-		// No consent yet: strip pll_language from outgoing headers.
-		add_action( 'send_headers', [ $this, 'suppress_pll_cookie' ], PHP_INT_MAX );
+		// No consent yet: suppress all pending Set-Cookie headers.
+		add_action( 'send_headers', [ $this, 'suppress_all_cookies' ], PHP_INT_MAX );
 	}
 
 	// -------------------------------------------------------------------------
@@ -66,37 +59,13 @@ class Mavo_Cookie_Consent_Polylang {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * Removes the pll_language Set-Cookie header from the pending response.
+	 * Drops all pending Set-Cookie headers before the response is sent.
 	 *
-	 * Uses PHP_INT_MAX priority so it runs after Polylang (and any other
-	 * plugin) has finished queuing cookies during `send_headers`.
+	 * Runs at PHP_INT_MAX priority on `send_headers`, after every plugin has
+	 * had a chance to queue its cookies via setcookie() during `init`.
 	 */
-	public function suppress_pll_cookie(): void {
-		$pending = headers_list();
-
-		// Drop every Set-Cookie header PHP has queued so far.
+	public function suppress_all_cookies(): void {
 		header_remove( 'Set-Cookie' );
-
-		// Re-register each one except the pll_language cookie.
-		foreach ( $pending as $header ) {
-			// headers_list() includes all header types; we only touch Set-Cookie.
-			// stripos returns 0 (falsy as int but !== false) when the string
-			// starts with 'Set-Cookie:', so use strict comparison.
-			if ( 0 !== stripos( $header, 'Set-Cookie:' ) ) {
-				continue; // Not a Set-Cookie header — was not removed, skip.
-			}
-
-			// Extract the cookie name: the token before the first '=' after
-			// the "Set-Cookie: " prefix.
-			$value_part  = ltrim( substr( $header, strlen( 'Set-Cookie:' ) ) );
-			$cookie_name = urldecode( trim( (string) strtok( $value_part, '=' ) ) );
-
-			if ( self::PLL_COOKIE === $cookie_name ) {
-				continue; // Suppress — do not re-add.
-			}
-
-			header( $header, false );
-		}
 	}
 
 	// -------------------------------------------------------------------------
@@ -125,16 +94,5 @@ class Mavo_Cookie_Consent_Polylang {
 			'cookieName' => self::PLL_COOKIE,
 			'language'   => is_string( $lang ) ? $lang : '',
 		];
-	}
-
-	// -------------------------------------------------------------------------
-	// Helpers
-	// -------------------------------------------------------------------------
-
-	/**
-	 * Returns true when Polylang (or Polylang Pro) is active and initialised.
-	 */
-	private function is_polylang_active(): bool {
-		return function_exists( 'pll_current_language' );
 	}
 }
